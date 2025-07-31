@@ -674,6 +674,10 @@ class ParameterWidget(QWidget):
         
         layout.addWidget(tabs)
         
+        # Connect tab change to refresh tensor visualization
+        tabs.currentChanged.connect(self.on_tab_changed)
+        self.tabs_widget = tabs  # Store reference for later use
+        
     def create_model_tab(self):
         """Create model and context parameters tab"""
         widget = QWidget()
@@ -980,7 +984,21 @@ Tips:
     def _insert_pattern(self, pattern):
         """Insert a pattern into the tensor override field"""
         self.tensor_override.setText(pattern)
-        self.tensor_override.parent().close()  # Close the dialog
+        # Explicitly trigger the tensor override change handler
+        self.on_tensor_override_changed()
+        # Find and close the dialog properly
+        dialog = self.sender()
+        while dialog and not isinstance(dialog, QDialog):
+            dialog = dialog.parent()
+        if dialog:
+            dialog.accept()
+            
+    def on_tab_changed(self, index):
+        """Handle tab change - refresh tensor visualization when Performance tab is selected"""
+        if hasattr(self, 'tabs_widget') and self.tabs_widget.tabText(index) == "Performance":
+            # Performance tab selected, trigger visualization update
+            if self.launcher_ref and hasattr(self.launcher_ref, 'update_tensor_visualization'):
+                self.launcher_ref.update_tensor_visualization()
 
 class LlamaLauncher(QMainWindow):
     """Main launcher window"""
