@@ -49,6 +49,9 @@ class ModelConfig:
     repeat_penalty: float = 1.0
     system_prompt: str = ""
     chat_template: str = ""
+    # Server-specific parameters
+    server_host: str = "127.0.0.1"
+    server_port: int = 8080
 
 @dataclass
 class GlobalConfig:
@@ -681,7 +684,7 @@ class ParameterWidget(QWidget):
         self.ctx_size = QSpinBox()
         self.ctx_size.setRange(512, 131072)
         self.ctx_size.setValue(4096)
-        self.ctx_size.setSuffix(" tokens")
+        self.ctx_size.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.ctx_size, 0, 1)
         
         # Batch size
@@ -689,6 +692,7 @@ class ParameterWidget(QWidget):
         self.batch_size = QSpinBox()
         self.batch_size.setRange(1, 8192)
         self.batch_size.setValue(2048)
+        self.batch_size.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.batch_size, 1, 1)
         
         # Micro batch size
@@ -696,6 +700,7 @@ class ParameterWidget(QWidget):
         self.ubatch_size = QSpinBox()
         self.ubatch_size.setRange(1, 2048)
         self.ubatch_size.setValue(512)
+        self.ubatch_size.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.ubatch_size, 2, 1)
         
         # System prompt
@@ -725,6 +730,7 @@ class ParameterWidget(QWidget):
         self.n_gpu_layers = QSpinBox()
         self.n_gpu_layers.setRange(0, 999)
         self.n_gpu_layers.setValue(0)
+        self.n_gpu_layers.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.n_gpu_layers, 0, 1)
         
         # Threads
@@ -733,6 +739,7 @@ class ParameterWidget(QWidget):
         self.threads.setRange(-1, 64)
         self.threads.setValue(-1)
         self.threads.setSpecialValueText("Auto")
+        self.threads.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.threads, 1, 1)
         
         # Flash attention
@@ -764,6 +771,7 @@ class ParameterWidget(QWidget):
         self.temperature.setRange(0.0, 2.0)
         self.temperature.setSingleStep(0.1)
         self.temperature.setValue(0.8)
+        self.temperature.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.temperature, 0, 1)
         
         # Top-K
@@ -772,6 +780,7 @@ class ParameterWidget(QWidget):
         self.top_k.setRange(0, 200)
         self.top_k.setValue(40)
         self.top_k.setSpecialValueText("Disabled")
+        self.top_k.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.top_k, 1, 1)
         
         # Top-P
@@ -780,6 +789,7 @@ class ParameterWidget(QWidget):
         self.top_p.setRange(0.0, 1.0)
         self.top_p.setSingleStep(0.05)
         self.top_p.setValue(0.9)
+        self.top_p.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.top_p, 2, 1)
         
         # Repeat penalty
@@ -788,6 +798,7 @@ class ParameterWidget(QWidget):
         self.repeat_penalty.setRange(0.0, 2.0)
         self.repeat_penalty.setSingleStep(0.05)
         self.repeat_penalty.setValue(1.0)
+        self.repeat_penalty.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         layout.addWidget(self.repeat_penalty, 3, 1)
         
         return widget
@@ -796,6 +807,27 @@ class ParameterWidget(QWidget):
         """Create advanced parameters tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        
+        # Server options group
+        server_group = QGroupBox("Server Options")
+        server_layout = QGridLayout(server_group)
+        
+        # Host
+        server_layout.addWidget(QLabel("Host:"), 0, 0)
+        self.server_host = QLineEdit()
+        self.server_host.setText("127.0.0.1")
+        self.server_host.setPlaceholderText("127.0.0.1")
+        server_layout.addWidget(self.server_host, 0, 1)
+        
+        # Port
+        server_layout.addWidget(QLabel("Port:"), 1, 0)
+        self.server_port = QSpinBox()
+        self.server_port.setRange(1, 65535)
+        self.server_port.setValue(8080)
+        self.server_port.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        server_layout.addWidget(self.server_port, 1, 1)
+        
+        layout.addWidget(server_group)
         
         # Additional command line arguments
         layout.addWidget(QLabel("Additional Arguments:"))
@@ -821,7 +853,9 @@ class ParameterWidget(QWidget):
             top_p=self.top_p.value(),
             repeat_penalty=self.repeat_penalty.value(),
             system_prompt=self.system_prompt.text(),
-            chat_template=self.chat_template.currentText()
+            chat_template=self.chat_template.currentText(),
+            server_host=self.server_host.text(),
+            server_port=self.server_port.value()
         )
         
     def set_config(self, config: ModelConfig):
@@ -838,6 +872,8 @@ class ParameterWidget(QWidget):
         self.top_p.setValue(config.top_p)
         self.repeat_penalty.setValue(config.repeat_penalty)
         self.system_prompt.setText(config.system_prompt)
+        self.server_host.setText(config.server_host)
+        self.server_port.setValue(config.server_port)
         
         # Set chat template
         index = self.chat_template.findText(config.chat_template)
@@ -1045,7 +1081,7 @@ class LlamaLauncher(QMainWindow):
         
         exe_select_layout = QHBoxLayout()
         self.executable_edit = QLineEdit()
-        self.executable_edit.setPlaceholderText("Path to llama-server.exe or llama-cli.exe")
+        self.executable_edit.setPlaceholderText("Path to llama folder")
         exe_select_layout.addWidget(self.executable_edit)
         
         exe_browse_btn = QPushButton("Browse")
@@ -1054,16 +1090,14 @@ class LlamaLauncher(QMainWindow):
         
         exe_layout.addLayout(exe_select_layout)
         
-        # Mode selection - mutually exclusive
+        # Mode selection - dropdown
         mode_layout = QHBoxLayout()
-        self.server_mode = QCheckBox("Server Mode")
-        self.server_mode.setChecked(True)
-        self.server_mode.toggled.connect(self.on_server_mode_toggled)
-        mode_layout.addWidget(self.server_mode)
-        
-        self.cli_mode = QCheckBox("CLI Mode")
-        self.cli_mode.toggled.connect(self.on_cli_mode_toggled)
-        mode_layout.addWidget(self.cli_mode)
+        mode_layout.addWidget(QLabel("Mode:"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["llama-server.exe", "llama-cli.exe"])
+        self.mode_combo.setCurrentText("llama-server.exe")
+        mode_layout.addWidget(self.mode_combo)
+        mode_layout.addStretch()  # Push combo to the left
         
         exe_layout.addLayout(mode_layout)
         
@@ -1329,15 +1363,14 @@ class LlamaLauncher(QMainWindow):
             self.global_config.models_directory = directory
             
     def browse_executable(self):
-        """Browse for llama executable"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Llama Executable", 
-            self.executable_edit.text(),
-            "Executable files (*.exe);;All files (*.*)"
+        """Browse for llama folder containing executables"""
+        folder_path = QFileDialog.getExistingDirectory(
+            self, "Select Llama Folder", 
+            self.executable_edit.text() or ""
         )
-        if file_path:
-            self.executable_edit.setText(file_path)
-            self.global_config.executable_path = file_path
+        if folder_path:
+            self.executable_edit.setText(folder_path)
+            self.global_config.executable_path = folder_path
             
     def scan_models(self):
         """Start scanning for models in the selected directory"""
@@ -1546,29 +1579,22 @@ class LlamaLauncher(QMainWindow):
         # Restart the timer - this debounces rapid typing
         self.tensor_update_timer.start(300)  # 300ms delay
         
-    def on_server_mode_toggled(self, checked: bool):
-        """Handle server mode toggle - ensure mutually exclusive with CLI mode"""
-        if checked and self.cli_mode.isChecked():
-            self.cli_mode.setChecked(False)
-        elif not checked and not self.cli_mode.isChecked():
-            # If neither is checked, default to server mode
-            self.server_mode.setChecked(True)
-            
-    def on_cli_mode_toggled(self, checked: bool):
-        """Handle CLI mode toggle - ensure mutually exclusive with server mode"""
-        if checked and self.server_mode.isChecked():
-            self.server_mode.setChecked(False)
-        elif not checked and not self.server_mode.isChecked():
-            # If neither is checked, default to server mode
-            self.server_mode.setChecked(True)
-                                     
+
     def build_command_line(self) -> List[str]:
         """Build command line arguments"""
         if not self.current_model or not self.executable_edit.text():
             return []
             
         config = self.parameter_widget.get_config()
-        cmd = [self.executable_edit.text()]
+        
+        # Use the selected mode from combo box
+        base_path = self.executable_edit.text()
+        selected_mode = self.mode_combo.currentText()
+        
+        # Construct the full executable path from the folder
+        executable_path = os.path.join(base_path, selected_mode)
+            
+        cmd = [executable_path]
         
         # Model path - always quote the path
         cmd.extend(["-m", f'"{self.current_model["path"]}"'])
@@ -1613,13 +1639,19 @@ class LlamaLauncher(QMainWindow):
         if config.repeat_penalty != 1.0:
             cmd.extend(["--repeat-penalty", str(config.repeat_penalty)])
             
-        # System prompt - quote if contains spaces
-        if config.system_prompt.strip():
+        # System prompt - only for CLI mode, not server mode
+        selected_mode = self.mode_combo.currentText()
+        if selected_mode == "llama-cli.exe" and config.system_prompt.strip():
             prompt = config.system_prompt.strip()
             if " " in prompt:
                 cmd.extend(["-sys", f'"{prompt}"'])
             else:
                 cmd.extend(["-sys", prompt])
+        
+        # Server-specific parameters
+        if selected_mode == "llama-server.exe":
+            cmd.extend(["--host", config.server_host])
+            cmd.extend(["--port", str(config.server_port)])
             
         # Chat template
         if config.chat_template and config.chat_template != "auto":
